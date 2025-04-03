@@ -1,0 +1,113 @@
+from tkinter import *
+from tkinter import ttk
+import requests
+import pandas as pd
+import numpy as np
+from sklearn.ensemble import RandomForestClassifier
+import warnings
+warnings.filterwarnings('ignore')
+
+# Load the dataset and train the model
+df = pd.read_csv("C:/Users/SMILE/OneDrive/Desktop/Weather Project/DailyDelhiClimateTrain.csv")
+df['date'] = pd.to_datetime(df['date'])
+
+def create_hazard_labels(row):
+    hazards = []
+    if row['humidity'] > 85:
+        hazards.append('heavy_rainfall')
+    if row['wind_speed'] > 15:
+        hazards.append('storm')
+    if row['meantemp'] > 35:
+        hazards.append('high_temperature')
+    return '|'.join(hazards) if hazards else 'normal'
+
+df['hazard_label'] = df.apply(create_hazard_labels, axis=1)
+df['heavy_rainfall'] = df['hazard_label'].str.contains('heavy_rainfall').astype(int)
+df['storm'] = df['hazard_label'].str.contains('storm').astype(int)
+df['high_temperature'] = df['hazard_label'].str.contains('high_temperature').astype(int)
+df['month'] = df['date'].dt.month
+df['day'] = df['date'].dt.day
+
+features = ['meantemp', 'humidity', 'wind_speed', 'meanpressure', 'month', 'day']
+hazard_types = ['heavy_rainfall', 'storm', 'high_temperature']
+models = {}
+
+for hazard in hazard_types:
+    y = df[hazard]
+    X = df[features]
+    rf = RandomForestClassifier(n_estimators=100, random_state=42)
+    rf.fit(X, y)
+    models[hazard] = rf
+
+def data_get():
+    city = city_name.get()
+    data = requests.get(f"https://api.openweathermap.org/data/2.5/weather?q={city}&appid=8ef865d86bfeafd0447a47e4b0660775&units=metric").json()
+    w_label1.config(text=data["weather"][0]["main"])
+    wd_label1.config(text=data["weather"][0]["description"])
+    temp_label1.config(text=f"{data['main']['temp']}°C")
+    p_label1.config(text=f"{data['main']['pressure']} hPa")
+    wind_speed1.config(text=f"{data['wind']['speed']} m/s")
+    predict_hazard(data['main']['temp'], data['main']['humidity'], data['wind']['speed'], data['main']['pressure'])
+
+def predict_hazard(temp, humidity, wind_speed, pressure):
+    month, day = 6, 15  # Placeholder values
+    sample_data = pd.DataFrame([[temp, humidity, wind_speed, pressure, month, day]], columns=features)
+    hazard_predictions = []
+    for hazard, model in models.items():
+        pred = model.predict(sample_data)[0]
+        if pred == 1:
+            hazard_predictions.append(hazard.replace('_', ' ').capitalize())
+    hazard_label.config(text=', '.join(hazard_predictions) if hazard_predictions else "No Hazards Detected")
+
+def create_gui():
+    win = Tk()
+    win.title("AgroAlert Weather Alert System")
+    win.config(bg="orange")
+    win.geometry("600x550")
+
+    Label(win, text="AgroAlert Weather Alert System", bg="black", fg="white", font=("Arial", 18, "bold"))\
+        .pack(pady=10)
+    Label(win, text="Select Your State:", bg="orange", font=("Arial", 12, "bold"))\
+        .pack()
+
+    global city_name
+    city_name = StringVar()
+    list_names = ["Andhra Pradesh","Arunachal Pradesh ","Assam","Bihar","Chhattisgarh","Delhi", "Goa","Gujarat","Haryana","Himachal Pradesh","Jammu and Kashmir","Jharkhand","Karnataka","Kerala","Madhya Pradesh","Maharashtra","Manipur","Meghalaya","Mizoram","Nagaland","Odisha","Punjab","Rajasthan","Sikkim","Tamil Nadu","Telangana","Tripura","Uttar Pradesh","Uttarakhand","West Bengal","Andaman and Nicobar Islands","Chandigarh","Dadra and Nagar Haveli","Daman and Diu","Lakshadweep","Puducherry"]
+    combobox = ttk.Combobox(win, values=list_names, font=("Arial", 12), textvariable=city_name)
+    combobox.pack(pady=5)
+    
+    Button(win, text="Get Weather", font=("Arial", 12, "bold"), command=data_get)\
+        .pack(pady=5)
+    
+    frame = Frame(win, bg="orange")
+    frame.pack(pady=10)
+    
+    global w_label1, wd_label1, temp_label1, p_label1, wind_speed1, hazard_label
+    
+    Label(frame, text="Weather:", bg="orange", font=("Arial", 12, "bold")).grid(row=0, column=0, padx=10, pady=5, sticky=E)
+    w_label1 = Label(frame, text="-", font=("Arial", 12))
+    w_label1.grid(row=0, column=1, padx=10, pady=5)
+    
+    Label(frame, text="Description:", bg="orange", font=("Arial", 12, "bold")).grid(row=1, column=0, padx=10, pady=5, sticky=E)
+    wd_label1 = Label(frame, text="-", font=("Arial", 12))
+    wd_label1.grid(row=1, column=1, padx=10, pady=5)
+    
+    Label(frame, text="Temperature:", bg="orange", font=("Arial", 12, "bold")).grid(row=2, column=0, padx=10, pady=5, sticky=E)
+    temp_label1 = Label(frame, text="-", font=("Arial", 12))
+    temp_label1.grid(row=2, column=1, padx=10, pady=5)
+    
+    Label(frame, text="Pressure:", bg="orange", font=("Arial", 12, "bold")).grid(row=3, column=0, padx=10, pady=5, sticky=E)
+    p_label1 = Label(frame, text="-", font=("Arial", 12))
+    p_label1.grid(row=3, column=1, padx=10, pady=5)
+    
+    Label(frame, text="Wind Speed:", bg="orange", font=("Arial", 12, "bold")).grid(row=4, column=0, padx=10, pady=5, sticky=E)
+    wind_speed1 = Label(frame, text="-", font=("Arial", 12))
+    wind_speed1.grid(row=4, column=1, padx=10, pady=5)
+    
+    Label(frame, text="Predicted Hazards:", bg="orange", font=("Arial", 12, "bold")).grid(row=5, column=0, padx=10, pady=5, sticky=E)
+    hazard_label = Label(frame, text="-", font=("Arial", 12, "bold"), fg="red")
+    hazard_label.grid(row=5, column=1, padx=10, pady=5)
+    
+    win.mainloop()
+
+create_gui()
